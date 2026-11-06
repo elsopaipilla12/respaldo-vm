@@ -1,0 +1,48 @@
+PARCHE REACCIONES v1.0.2 — VALIDACION CON CHAT BASE
+==================================================
+
+Este ZIP es un parche SOBRE ServicioReaccionesArreglado (NO es el proyecto completo).
+No elimina, mueve ni modifica k8s/, PVC, claves, secretos ni configuracion del cluster.
+
+ARCHIVOS
+  app/services/external.py
+  app/api/v1/reactions.py
+  app/schemas/reaction.py
+  tests/test_service.py
+  VERSION
+
+CAMBIOS
+  - El POST /api/v1/reactions admite channel_id.
+  - El GET /api/v1/messages/{message_id}/reactions admite ?channel_id=.
+  - Si EXTERNAL_VALIDATION_ENABLED=true, channel_id es obligatorio en POST y GET.
+  - Valida un message_id en GET /api/v1/channels/{channel_id}/messages, que retorna lista.
+  - Consulta Usuarios en GET /api/v1/users/{user_id}.
+  - El channel_id es solo para validacion: no se guarda en SQLite ni cambia el evento RabbitMQ.
+  - En modo simulado, se mantienen las solicitudes anteriores sin channel_id.
+
+USO EN WSL (cambiar TU_USUARIO por el de Windows)
+  cd ~/ServicioReaccionesArreglado
+  cp app/api/v1/reactions.py app/api/v1/reactions.py.bak
+  cp app/services/external.py app/services/external.py.bak
+  cp app/schemas/reaction.py app/schemas/reaction.py.bak
+  unzip -o "/mnt/c/Users/TU_USUARIO/Downloads/reacciones-validacion-v1.0.2.zip" -d .
+
+Regenerar el contrato OpenAPI (se requiere Docker y la imagen ya creada):
+  docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work --entrypoint python reaction-service:prueba scripts/export_schemas.py
+
+Ejecutar tests sin alterar el cluster:
+  docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work --entrypoint python reaction-service:prueba -m unittest discover -s tests -v
+
+IMPORTANTE
+  NO activar validaciones reales en docker compose local con las URLs internas del cluster.
+  NO hacer kubectl apply ni exponer rutas de escritura en Ingress aun.
+  La validacion de existencia NO comprueba que user_id corresponda al usuario autenticado.
+  Para eso se necesita autenticacion/autorizacion antes de abrir POST y DELETE publicamente.
+  Si el GET de mensajes esta paginado, debe adaptarse para buscar todas las paginas.
+
+Variables para el proximo despliegue Kubernetes (todavia NO aplicar):
+  EXTERNAL_VALIDATION_ENABLED=true
+  MESSAGES_SERVICE_URL=http://messages.servicios-base.svc.cluster.local:8000/api/v1/channels
+  USERS_SERVICE_URL=http://users.servicios-base.svc.cluster.local:8000/api/v1/users
+
+Siguiente paso: construir/publicar una nueva imagen v1.0.2 y cambiar el Deployment cuando las pruebas pasen.

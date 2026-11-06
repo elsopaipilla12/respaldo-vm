@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reaction-service
+  namespace: grupo-reacciones
+  labels:
+    app.kubernetes.io/name: reaction-service
+spec:
+  # IMPORTANTE: solo 1 replica con SQLite. NO activar HPA en esta etapa.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: reaction-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: reaction-service
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull
+      automountServiceAccountToken: false
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: reaction-service
+          # Reemplazar por una imagen que el cluster pueda descargar.
+          image: ghcr.io/sebajusm/reaction-service:v1.0.2
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: EXTERNAL_VALIDATION_ENABLED
+              value: "true"
+            - name: MESSAGES_SERVICE_URL
+              value: "http://messages.servicios-base.svc.cluster.local:8000/api/v1/channels"
+            - name: USERS_SERVICE_URL
+              value: "http://users.servicios-base.svc.cluster.local:8000/api/v1/users"
+            - name: PROJECT_NAME
+              value: "Reaction Service"
+            - name: DATABASE_URL
+              value: sqlite+aiosqlite:////app/data/reactions.db
+            - name: DATABASE_ECHO
+              value: "false"
+            # ETAPA PRELIMINAR: pruebas internas, sin broker ni chat base.
+            - name: EVENTS_ENABLED
+              value: "true"
+            - name: EVENTS_REQUIRED
+              value: "false"
+            - name: EVENT_BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: reaction-broker-url
+                  key: EVENT_BROKER_URL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Liveness temporal sin dependencia de DB/RabbitMQ.
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: temp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: reactions-data
+        - name: temp
+          emptyDir:
+            sizeLimit: 64Mi

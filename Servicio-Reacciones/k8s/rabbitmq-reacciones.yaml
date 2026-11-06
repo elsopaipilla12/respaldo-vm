@@ -1,0 +1,97 @@
+# Broker RabbitMQ exclusivo para el namespace grupo-reacciones.
+# No publica puertos externos. Mantener una sola replica para este laboratorio.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-reacciones
+  namespace: grupo-reacciones
+  labels:
+    app.kubernetes.io/name: rabbitmq-reacciones
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: rabbitmq-reacciones
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: amqp
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq-reacciones
+  namespace: grupo-reacciones
+  labels:
+    app.kubernetes.io/name: rabbitmq-reacciones
+spec:
+  serviceName: rabbitmq-reacciones
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq-reacciones
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rabbitmq-reacciones
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: rabbitmq-data
+          emptyDir: {}
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:4-management-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: amqp
+              containerPort: 5672
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-reacciones-auth
+                  key: username
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-reacciones-auth
+                  key: password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 750m
+              memory: 1Gi
+          startupProbe:
+            tcpSocket:
+              port: amqp
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: amqp
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            tcpSocket:
+              port: amqp
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
