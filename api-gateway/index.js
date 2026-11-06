@@ -11,9 +11,9 @@ app.use(cors());
 app.use('/api/reacciones', createProxyMiddleware({ 
     target: 'http://reaction-service.grupo-reacciones:8000', 
     changeOrigin: true, 
-    pathRewrite: { '^/api/reacciones': '' }
+    // Al usar una función o reemplazar '^/', evitamos el problema del recorte de Express
+    pathRewrite: () => '/api/v1/reactions'
 }));
-
 // 2. Proxy hacia el servicio de Búsqueda
 app.use('/api/busqueda', createProxyMiddleware({ 
     target: 'http://search.grupo-busqueda-avanzada:8000', 
